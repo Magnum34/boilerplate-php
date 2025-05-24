@@ -48,3 +48,6 @@ mariadb_shell:
 
 mariadb_export:
 	docker-compose -f ./docker-compose.yml exec -it mariadb mariadb-dump -u ${DATABASE_USER} -P ${MARIADB_PORT} -p ${DATABASE_NAME} > ${BACKUP_FULLNAME}
+
+logs:
+	bash ./scripts/logs.sh
