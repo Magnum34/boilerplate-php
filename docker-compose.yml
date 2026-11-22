@@ -1,3 +1,5 @@
+name: ${APP_NAME:-boilerplate-php}
+
 volumes:
   db_data:
   db_backup:
@@ -7,10 +9,11 @@ networks:
 
 services:
   mariadb:
-    restart: always
-    image: mariadb:11.2
+    image: ${APP_NAME:-boilerplate-php}-mariadb:11.2
     build:
+      context: ./
       dockerfile: ./docker/mariadb/Dockerfile
+    restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${DATABASE_NAME}
       MYSQL_USER: ${DATABASE_USER}
@@ -19,43 +22,71 @@ services:
     networks:
       - backend
     ports:
-      - ${MARIADB_PORT}:3306
+      - ${MARIADB_PORT:-3306}:3306
     volumes:
       - db_data:/var/lib/mysql
       - db_backup:/var/mariadb/backup
       - ./config/mariadb/my.cnf:/etc/mysql/mariadb.conf.d/mysqld.cnf
       - ./config/mariadb/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
   phpmyadmin:
-    image: phpmyadmin
-    restart: always
-    ports:
-      - 8080:80
+    image: phpmyadmin:5
+    restart: unless-stopped
     environment:
+      PMA_HOST: mariadb
       UPLOAD_LIMIT: 300M
+    networks:
+      - backend
+    ports:
+      - ${PHPMYADMIN_PORT:-8080}:80
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  # One-shot container: generates self-signed certificates for local HTTPS
   certbot:
-    image: certbot:${VERSION}
+    image: ${APP_NAME:-boilerplate-php}-certbot:${VERSION:-latest}
     build:
+      context: ./
       dockerfile: ./docker/certbot/Dockerfile
     environment:
-      - CN="fake.domain.com"
-      - EMAIL="fake.email@gmail.com"
+      - CN=fake.domain.com
+      - EMAIL=fake.email@example.com
     volumes:
       - ./certs/production:/var/www/letsencrypt
       - ./certs/development:/var/www/localhost
+
   web:
-    image: php:${VERSION}
+    image: ${APP_NAME:-boilerplate-php}-web:${VERSION:-latest}
     build:
-      dockerfile: ./docker/php8.2/Dockerfile
       context: ./
+      dockerfile: ./docker/php/Dockerfile
+      args:
+        PHP_VERSION: ${PHP_VERSION:-8.4}
+    restart: unless-stopped
     networks:
       - backend
     depends_on:
-      - mariadb
-      - certbot
+      mariadb:
+        condition: service_healthy
+      certbot:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_DATABASE: ${DATABASE_NAME}
+      DB_USERNAME: ${DATABASE_USER}
+      DB_PASSWORD: ${DATABASE_PASSWORD}
     volumes:
       - ./certs/development:/etc/nginx/ssl/
       - ./config/nginx/conf.d:/etc/nginx/conf.d/
       - ./apps:/var/www/html
     ports:
-      - 80:80
-      - 443:443
+      - ${HTTP_PORT:-80}:80
+      - ${HTTPS_PORT:-443}:443
