@@ -125,3 +125,9 @@ $RECYCLE.BIN/
 !/certs/production/.gitignore
 
 
+
+# Database dumps (make db-export)
+/backups/
+
+# Composer dependencies
+/apps/vendor/
